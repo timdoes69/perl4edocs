@@ -1,0 +1,45 @@
+#! /usr/bin/perl -w
+# eDocsStatic - Handle a PseudEcom site "static" page.  ****GoDaddy****
+
+# Read the requested page from the library directory, add the standard
+# boilerplate, and send the result to the client.
+
+use strict;
+use cPanelUserConfig;
+use lib qw(/perl/usr/lib/perl5 /home/jab118066250/perl);
+use JABIO::JABFile;  #jab i created this 'file location::filename' combo see bookmarked info on perl modules
+use CGI qw(:standard);
+use jabtestWebDB;
+use WebDB::PseudEcomBeta;
+
+# Change this pathname as necessary for your site
+my $static_page_dir = "/home/jab118066250/public_html/jab.networthyconsulting.com/beta";
+
+my $page;
+
+my $page_name = WebDB::trim (param ("page"));
+$page_name ne ""
+	or fatal_error ("No page was requested; invocation error");
+# disallow .. or pathname separators (/ or \) in the filename
+# (catch hack attempts to view files outside the page directory)
+$page_name =~ /\.\.|\/|\\/
+	and fatal_error ("Access to $page_name not allowed.");
+$page_name = $static_page_dir . "/" . $page_name;
+
+my $fh = new JABIO::JABFile ($page_name)
+	or fatal_error ("Could not open $page_name");
+
+{	# undefine local copy of input separator to disable it
+	local $/;
+	undef $/;
+	$page .= <$fh>;		# slurp entire file
+}
+
+undef $fh;			# close file
+
+print header (),
+		start_html (-title => "NetWorthy Consulting", -bgcolor => "white"),
+		add_boilerplate ($page),
+		end_html ();
+
+exit (0);

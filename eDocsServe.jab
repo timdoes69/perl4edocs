@@ -1,0 +1,232 @@
+#! /usr/bin/perl -w
+# eDocsServe - serve an eDocument file as a Web page  ****GoDaddy****
+
+use strict;
+use cPanelUserConfig;
+use lib qw(/home/jab118066250/perl/usr/lib/perl5 /home/jab118066250/perl);
+use CGI qw(:standard escape escapeHTML);
+use jabtestWebDB;
+
+#@ DISPATCH
+if (defined (param ("name")))
+{
+	display_image (param ("name"), param ("thumbnail"));
+}
+elsif (defined (param ("gallery")))
+{
+	display_gallery ()
+}
+else
+{
+	error ("Unknown request type");
+}
+#@ DISPATCH
+
+exit (0);
+
+#@ DISPLAY_IMAGE
+
+#@ DISPLAY_IMAGE # ************************ jab check/fix this sub-routine ************************
+sub display_image
+{
+my ($name, $show_thumbnail) = @_;
+my $col_name = (defined ($show_thumbnail) ? "thumbnail" : "thumbnail");
+my ($dbh, $mime_type, $data);
+
+	$dbh = jabtestWebDB::connect ("DBI:mysql:host=localhost;database=jabtestWebDB","edocuments", "NTOnow123",{PrintError => 0, RaiseError => 1});
+	($mime_type, $data) = $dbh->selectrow_array (
+					"SELECT mime_type, $col_name FROM imagedatabase WHERE name = ?",
+					undef, $name);
+	$dbh->disconnect ();
+	# did we find a record?
+	error ("Cannot find image named $name") unless defined ($mime_type);
+
+	print header (-bgcolor => "lightgray", -type => $mime_type, -Content_Length => length ($data)),
+			$data;
+}
+#@ DISPLAY_IMAGE
+
+# Present gallery of names and images in the image table.  Present the
+# thumbnail version of each image, but embed the image inside a hyperlink
+# that selects the full size image for display.
+
+#@ DISPLAY_GALLERY
+sub display_gallery
+{
+my ($dbh, $sth, $sth2, $sth5, $url);
+my $count;
+my $test; # determine if you should print "Total eDocuments:"
+my $mime_type;
+my $name;
+my $jabselectname;
+my $jabselectmimetype;
+my $jabpdf = "application/pdf"; # jab
+my $jabtxt = "text/plain"; # jab
+my $jabzip = "application/zipx-gzip"; # jab
+my $jabtar = "application/x-gzip"; # jab
+my $jabxzip = "application/x-zip-compressed"; # jab
+my $jaboctet = "application/octet-stream"; #jab
+my $jabmsinstall = "application/x-msdownload"; #jab
+my $edocs_image_id = 1; # jab
+my $edocsiconname; # jab
+my $serve_url; # jab this one to display image
+my $serve_url2; # jab this one to provide link
+my $mime_type_searchstring = "image"; #jab
+my $jabresult; #jab
+my $jabvalue = 0; # jab value for position in index() function
+
+	print header (), start_html (-bgcolor => "lightgray", "eDocuments Gallery");
+
+# **************************** COUNT ALL eDOCUMENTS ***********************************
+
+
+	$dbh = jabtestWebDB::connect ("DBI:mysql:host=localhost;database=jabtestWebDB","edocuments", "NTOnow123",{PrintError => 0, RaiseError => 1});
+	$sth = $dbh->prepare ("SELECT name FROM imagedatabase ORDER BY name");
+	$sth->execute ();
+	# we're fetching a single value (name), so we can call fetchrow_array()
+	# in a scalar context to get the value
+	while (my $name = $sth->fetchrow_array ())
+	{
+		# START COUNTING
+		++$count;
+	}
+
+ $sth->finish ();
+
+# **************************** DISPLAY ALL eDOCUMENTS ***********************************
+
+	$test = $count;
+
+        $dbh = jabtestWebDB::connect ("DBI:mysql:host=localhost;database=jabtestWebDB","edocuments", "NTOnow123",{PrintError => 0, RaiseError => 1});
+
+	$edocsiconname = $dbh->selectrow_array ("SELECT name FROM imagedatabase WHERE id = $edocs_image_id");
+
+
+        $sth = $dbh->prepare ("SELECT name FROM imagedatabase ORDER BY id"); #ORDER was NAME 
+        $sth->execute ();
+#jab needed??? $name = $sth->fetchrow_array ();
+        $sth2 = $dbh->prepare ("SELECT mime_type FROM imagedatabase ORDER BY id"); #ORDER was NAME
+        $sth2->execute ();
+#jab needed??? $mime_type = $sth2->fetchrow_array ();
+        # we're fetching a single value (name), so we can call fetchrow_array()
+        # in a scalar context to get the value
+#jab old way...       while ( $name = $sth->fetchrow_array ())
+
+	while ($name = $sth->fetchrow_array () and $mime_type = $sth2->fetchrow_array ())
+        {
+                # encode the name with escape() for the URL, with escapeHTML() otherwise
+                $url = url () . sprintf ("?name=%s", escape ($name));
+                $name = escapeHTML ($name);
+
+
+	if ($count eq $test)
+	{
+#        print p ("Total eDocuments: $count "),
+#	("Drag & Drop Icon to Save to desktop (be SURE to select the correct format i.e. zip, iso, tar, exe, etc\n\n)"), ("<br/>"), ("<br/>");
+#			++$count;
+
+
+print p (table ({-border => "10px, red"},
+			# jab only the border is working not thickness/color
+			# Total eDocuments: cell
+
+        Tr (td ({-bgcolor => 'white'}, strong "Total eDocuments: $count" )), 
+
+			# Drag & Drop: cell
+
+		Tr (td ({-bgcolor => "lightblue", -align => "center", -valign => "center"}, strong,
+            "Drag & Drop Icon to Save to desktop (be SURE to select the correct format i.e. zip, iso, tar, exe, etc\n\n)"), ("<br/>"), ("<br/>"
+
+		))));
+		
+		    ++$count;
+
+        };
+
+# ***************************** Determine if Image or Not ********************************
+
+#jab old search...  if (($mime_type ne $jabtxt) and ($mime_type ne $jabpdf) and ($mime_type ne $jabzip) and ($mime_type ne $jabtar) and ($mime_type ne $jabxzip) and ($mime_type ne $jaboctet) and ($mime_type ne $jabmsinstall)) # jab format???
+
+	$jabresult = index ($mime_type, $mime_type_searchstring);
+
+        if ($jabresult eq $jabvalue) #jab
+
+		{
+
+                #********************* Diplay Images ***************************
+
+#        print  p ({-href => $url}, $name,            # link for full size image
+                                # embed thumbnail as the link content to make it clickable
+#                                img ({-src => "$url", style => "width:100px;height:100px;", -alt => $name})
+#                        );
+
+
+#        print  p ("jabtest4 Images, errorcode & mimetype: $jabresult $mime_type");
+
+#	    print  p ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"}, "Click Here for Home"), "<br/><br/><br/><br/>";
+
+print a (table ({-border => "10px, red"},
+			# jab only the border is working not thickness/color
+			# eDocuments: cell
+
+        Tr (td ({-bgcolor => 'white', -align => "center"},"Drag & Drop Icon to Save to desktop or right click to open image in new tab", "<br/><br/>",
+        # link for full size image
+        
+        # embed thumbnail as the link content to make it clickable
+        
+         (a {-href => $url},
+          img ({-src => $url, style => "width:100px;height:100px;", -alt => $name})), "<br/><br/>", "jabtest4 Images, name/errorcode/mimetype: $name $jabresult $mime_type")
+
+)));	     print  a ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"}, "Click Here for Home"), "<br/><br/><br/><br/>";
+
+
+
+		}
+
+		else	
+
+		#********************* Diplay eDocuments ***************************
+
+		{
+                    # encode the name with escape() for the URL, with escapeHTML() otherwise
+                    $serve_url = sprintf ("eDocsServe?name=%s", escape ($edocsiconname));
+                        $serve_url2 = sprintf ("eDocsServe?name=%s", escape ($name));
+                        $name = escapeHTML ($name);
+                        $mime_type = escapeHTML ($mime_type);
+                        print a ({-href => $serve_url2}, #$name, # link to doc
+                        # no document thumbnail (yet!) but it is clickable
+                        img ({-src => "$serve_url", -alt => $name}));
+
+        print  p ("jabtest4 nonImages, name/errorcode/mimetype: $name $jabresult $mime_type");
+
+	        print  a ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"}, "Click Here for Home"), "<br/><br/><br/><br/>";
+
+		}
+
+
+        }
+
+#jab needed???        $sth->finish ();
+
+
+#jab needed???	$dbh->disconnect ();
+
+	print end_html ();
+}
+#@ DISPLAY_GALLERY
+
+#@ ERROR
+sub error
+{
+my $msg = shift;
+
+	print header (),
+			start_html ("Error"),
+			p (escapeHTML ($msg)),
+			end_html ();
+	
+	print a ({-href => "https://jab.networthyconsulting.com/test/eDocsManage"}, "Click Here To Return Home"), "<br/>";
+	
+	exit (0);
+}
+#@ ERROR

@@ -1,0 +1,513 @@
+#! /usr/bin/perl -w
+#@ MAIN_PROGRAM
+# eDocsSearch - search eDocuments  ****GoDaddy****
+
+use strict;
+use cPanelUserConfig;
+use lib qw(/home/jab118066250/perl/usr/lib/perl5 /home/jab118066250/perl);
+use CGI qw(:standard escape escapeHTML);
+use jabtestWebDB;
+use WebDB::TableInfo;
+my $countnoimage;
+my $countimage;
+my $count;
+
+print header (),
+		start_html (-title => "Image Search", -bgcolor => "lightgray");
+
+my $dbh = jabtestWebDB::connect ();
+
+# Dispatch to proper action based on user selection
+
+my $choice = lc (param ("choice"));	# get choice, lowercased
+
+if ($choice eq "")					# initial invocation
+{
+	display_form ($dbh);
+}
+elsif ($choice eq "search")			# perform search
+{
+#jab	display_form ($dbh);			# redisplay the form
+
+#jab print p ("$count documents located"); # effort required to get this displayed at top of page
+
+        perform_search ($dbh);          # present the results
+
+}
+
+else
+{
+	print p (escapeHTML ("Logic error, unknown choice: $choice"));
+	
+	print a ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"},  "Click Here To Return Home"), "<br/>";
+}
+
+
+$dbh->disconnect ();
+
+print end_html ();
+
+exit (0);
+#@ MAIN_PROGRAM
+
+# ----------------------------------------------------------------------
+
+#@ DISPLAY_FORM
+
+sub display_form
+{
+
+print a ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"}, "Click Here To Return Home"), "<br/>";
+
+        print start_multipart_form (-action => url ()),
+
+                        "To begin your search fill in as much or little you know about the following and then click the SEARCH button at the bottom of the form: ", br (), br (),
+
+                        "Descriptive name for eDocument: ", br (),
+                        textfield (-name => "name",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "eDocument Location On Computer: ", br (),
+                        textfield (-name => "imagelocation",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "Who was there?: ", br (),
+                        textfield (-name => "whoseinit",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "What was the ocassion?: ", br (),
+                        textfield (-name => "ocassion",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "What are the details?: ", br (),
+                        textfield (-name => "venue",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "What State/Country?: ", br (),
+                        textfield (-name => "state",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "What City?: ", br (),
+                        textfield (-name => "city",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br (), br (),
+
+                        "Camera Model (n/a if none): ", br (),
+                        textfield (-name => "camera",
+                                                -value => "",
+                                                -override => 1,
+                                                -size => 60),
+                        br ();
+
+my $stmt; # jab test variable
+my $dbh = shift;
+my $tbl_info;
+my ($state_val_ref, $ocassion_val_ref, $venue_val_ref);
+my ($city_val_ref, $year_val_ref, $month_val_ref, $day_val_ref);
+my (@whosinit, @camera);
+
+	# jab $tbl_info = WebDB::TableInfo->get ($dbh, "imagedatabase");
+
+	# Generate the popup menus for the option lists. Add an "Any" item
+	# to the head of each list to serve as the default value.
+
+	# Values for architectural styles are in the style column definition
+
+	# jab @whosinit = $tbl_info->members ("whoseinit");
+	# jab unshift (@whosinit, "Any");
+
+	
+	# Values for year, month, state, city, ocassion and venue
+	# are in lookup tables.  For prices, there are labels that differ from
+	# the values.
+
+	$year_val_ref = jabtestWebDB::get_lookup_values (
+                                                $dbh,
+                                                "SELECT value FROM image_year ORDER BY value");
+        unshift (@{$year_val_ref}, "Any");
+
+	$month_val_ref = jabtestWebDB::get_lookup_values (
+                                                $dbh,
+                                                "SELECT value FROM image_month ORDER BY value");
+        unshift (@{$month_val_ref}, "Any");
+
+        $day_val_ref = jabtestWebDB::get_lookup_values (
+                                                $dbh,
+                                                "SELECT value FROM image_day ORDER BY value");
+        unshift (@{$day_val_ref}, "Any");
+
+
+	print start_form (-action => url ()),
+		p ("If all you know is the time frame please select the \n"
+			. " month/day/year when the eDocument was created."),
+		table ({-border => 1},
+                        Tr (
+                                td ("Year:"),
+                                td (popup_menu (-name => "year",
+                                                        -values => $year_val_ref))
+                        ), 
+                        Tr (
+                                td ("Month:"),
+                                td (popup_menu (-name => "month",
+                                                        -values => $month_val_ref))
+                        ), 
+			Tr (
+                                td ("Day:"),
+                                td (popup_menu (-name => "day",
+                                                        -values => $day_val_ref))
+                        )
+		),
+		br (),
+
+		
+		submit (-name => "choice", -value => "Search", $stmt),
+		end_form ();
+		
+}
+#@ DISPLAY_FORM
+
+#@ PERFORM_SEARCH
+sub perform_search
+{
+my $dbh = shift;
+my $tbl_info;
+my $val;
+my @condition;		# conditions for WHERE clause
+my @placeholder;	# values for placeholders
+my ($sth, $stmt, $col_list, $where);
+my $count;
+
+	# Collect conditions corresponding to the
+	# parameters specified in the search form.
+
+#@ CONSTRUCT_YEAR_TEST
+        $val = param ("year");
+        if (defined ($val) && $val ne "Any")
+        {
+                push (@condition, "year = ?");
+                push (@placeholder, $val);
+        }
+#@ CONSTRUCT_YEAR_TEST
+
+#@ CONSTRUCT_MONTH_TEST
+        $val = param ("month");
+        if (defined ($val) && $val ne "Any")
+        {
+                push (@condition, "month = ?");
+                push (@placeholder, $val);
+        }
+#@ CONSTRUCT_MONTH_TEST
+
+#@ CONSTRUCT_DAY_TEST
+        $val = param ("day");
+        if (defined ($val) && $val ne "Any")
+        {
+                push (@condition, "day = ?");
+                push (@placeholder, $val);
+        }
+#@ CONSTRUCT_DAY_TEST
+
+#@ CONSTRUCT_NAME_TEST
+        $val = param ("name");
+        if (defined ($val) && $val ne "")
+        {
+                push (@condition, "name LIKE CONCAT('%',?,'%')");   # jab test for any occurrence
+                push (@placeholder, $val);
+        }
+#@ CONSTRUCT_NAME_TEST
+
+#@ CONSTRUCT_LOCATION_TEST
+        $val = param ("imagelocation");
+        if (defined ($val) && $val ne "")
+        {
+           push (@condition, "imagelocation LIKE CONCAT('%',?,'%')");  # jab test for any occurrence
+                push (@placeholder, $val);
+        }
+#@ CONSTRUCT_LOCATION_TEST
+
+
+#@ CONSTRUCT_STATE_TEST
+	$val = param ("state");
+	if (defined ($val) && $val ne "")
+	{
+		push (@condition, "state LIKE CONCAT('%',?,'%')");   # jab test for any occurrence
+		push (@placeholder, $val);
+	}
+#@ CONSTRUCT_STATE_TEST
+
+#@ CONSTRUCT_CITY_TEST
+	$val = param ("city");
+	if (defined ($val) && $val ne "")
+	{
+		push (@condition, "city LIKE CONCAT('%',?,'%')");   # jab test for any occurrence
+		push (@placeholder, $val);
+	}
+#@ CONSTRUCT_CITY_TEST
+
+#@ CONSTRUCT_WHOSEINIT_TEST
+	$val = param ("whoseinit");
+	if (defined ($val) && $val ne "")
+	{
+		push (@condition, "whoseinit LIKE CONCAT('%',?,'%')"); # jab test for any occurrence
+		push (@placeholder, $val);
+	}
+#@ CONSTRUCT_WHOSEINIT_TEST
+
+#@ CONSTRUCT_OCASSION_TEST
+	$val = param ("ocassion");
+	if (defined ($val) && $val ne "")
+	{
+		push (@condition, "ocassion LIKE CONCAT('%',?,'%')");  # jab test for any occurrence
+		push (@placeholder, $val);
+	}
+#@ CONSTRUCT_OCASSION_TEST
+
+#@ CONSTRUCT_VENUE_TEST     ****** DETAILS DETAILS DETAILS ******
+	$val = param ("venue");
+	if (defined ($val) && $val ne "")
+	{
+		push (@condition, "venue LIKE CONCAT('%',?,'%')");   # jab test for any occurrence
+		push (@placeholder, $val);
+	}
+#@ CONSTRUCT_VENUE_TEST
+
+#@ CONSTRUCT_CAMERA_TEST
+        $val = param ("camera");
+        if (defined ($val) && $val ne "")
+        {
+                push (@condition, "camera LIKE CONCAT('%',?,'%')");   # jab test for any occurrence
+                push (@placeholder, $val);
+        }
+#@ CONSTRUCT_CAMERA_TEST
+
+#@ CONSTRUCT_QUERY
+	# List of columns to select (format price with commas and
+	# a leading dollar sign)
+	$col_list = "id, name, state, city,"
+				. "whoseinit, ocassion, venue, year, month, day, camera, imagelocation";
+	# WHERE clause listing the conditions
+	$where = "WHERE " . join (" AND ", @condition) if @condition;
+	$where = "WHERE id = 0" unless $where; # jab $where = "" unless $where;
+	# complete query
+	$stmt = "SELECT $col_list FROM imagedatabase $where "
+			. " ORDER BY id LIMIT 100";
+	
+#@ CONSTRUCT_QUERY
+
+#@ EXECUTE_QUERY
+	
+	$sth = $dbh->prepare ($stmt);
+	$sth->execute (@placeholder); 
+	$count = 0;            # jab selectrow_hashref() replaces prepare,execute& fetch...
+	while (my $ref = $sth->fetchrow_hashref ())
+	{
+		#jab display_listing ($ref, $count);  # just count for now
+		++$count;
+		# jab diagnostics print $stmt;	
+
+#		display_listing ($count); #jab pass 'search count' for display
+	}
+	$sth->finish ();
+
+        $sth = $dbh->prepare ($stmt);
+        $sth->execute (@placeholder);
+        #jab $count = 0;            # jab selectrow_hashref() replaces prepare,execute& fetch...
+        while (my $ref = $sth->fetchrow_hashref ())
+        {
+                display_listing ($ref, $count);
+                #jab ++$count;
+                # jab diagnostics print $stmt;
+
+#               display_listing ($count); #jab pass 'search count' for display
+        }
+        $sth->finish ();
+
+
+#	print p ("$count documents located");	# jab great for troubleshooting
+
+	print hr ("Sorry, no documents/images were found.\n\n", a {-href => "https://jab.networthyconsulting.com/beta/eDocsSearch"}, "Click Here To Try Again") if !$count;
+
+# jab see combined 'print' above.  print a ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"}, "Click Here To Return Home TEST TEST TEST "), "<br/>";
+
+#@ EXECUTE_QUERY
+}
+#@ PERFORM_SEARCH
+
+#@ DISPLAY_LISTING
+sub display_listing
+{
+my $ref = shift;
+my @row;		# array to hold display table rows
+
+my $stmt;
+my $col_list;
+my $count = shift;
+my $dbh;
+my $sth;
+my $sth2;
+my $sth3;
+my $sth4;
+my $sth5;
+my $mime_type; 
+my $thumbnail;
+my $serve_url; # jab this one to display image
+my $serve_url2; # jab this one to provide link
+my @col_name =	# columns to display, in the order they should be displayed
+(
+	"id", "name", "state", "city", "whoseinit", "ocassion", "venue",
+	"year", "month", "day", "camera", "imagelocation"
+);
+my %label =		# labels for each column
+(
+	"id"			=> "eDocument ID",
+	"name"			=> "Name",
+	"state"			=> "State",
+	"city"			=> "City",
+	"whoseinit"		=> "Who is in the eDocument",
+	"ocassion"		=> "What is the ocassion",
+	"venue"			=> "What are the details",
+	"year"			=> "Year created",
+	"month"			=> "Month created",
+	"day"			=> "Day created",
+	"camera"		=> "What camera (if any)",
+	"imagelocation"		=> "Where is the eDocument located"
+);
+
+$dbh = jabtestWebDB::connect ();  #jab NOT SURE THIS NEEDED. if not how are we getting connected/authenicated?("DBI:mysql:host=localhost;database=webdb","xxxxx", "xxxxxx",{PrintError => 0, RaiseError => 1});
+
+print p (strong "$count documents located"); # effort required to get this displayed at top of page
+
+
+	# Generate table rows; each one contains a label and a value
+
+	foreach my $col_name (@col_name)
+	{
+	
+		push (@row, Tr (
+					td ($label{$col_name} . ":"),		# label
+					td (escapeHTML ($ref->{$col_name})) # value
+				));
+		
+	}
+
+	print hr (), table ({-border => 3 }, @row);
+	my $jab = (escapeHTML ($ref->{id}));
+	my $edocs_image_id = 1; #jab ******** eDocument Icon *********
+
+	#jab print $jab; test purposes to see what and where prints
+
+
+
+$sth = $dbh->prepare("SELECT mime_type FROM imagedatabase WHERE id = $jab");
+$sth->execute();
+$sth2 = $dbh->prepare("SELECT name FROM imagedatabase WHERE id = $jab");
+$sth2->execute();
+$sth3 = $dbh->prepare("SELECT thumbnail FROM imagedatabase WHERE id = $jab");
+$sth3->execute();
+$sth4 = $dbh->prepare("SELECT thumbnail FROM imagedatabase WHERE id = $edocs_image_id");
+$sth4->execute();
+$sth5 = $dbh->prepare("SELECT name FROM imagedatabase WHERE id = $edocs_image_id");
+$sth5->execute();
+my @data = $sth->fetchrow_array(); # jab mime_type
+my @data2 = $sth2->fetchrow_array(); # jab name
+my @data3 = $sth3->fetchrow_array(); # jab thumbnail
+my @data4 = $sth4->fetchrow_array(); # jab eDocument Icon thumbnail
+my @data5 = $sth5->fetchrow_array(); # jab eDocument Icon thumbnail
+my $jabpdf = "application/pdf"; # jab
+my $jabtxt = "text/plain"; # jab
+my $jabzip = "application/zipx-gzip"; # jab
+my $jabtar = "application/x-gzip"; # jab
+my $jabxzip = "application/x-zip-compressed"; # jab
+my $jaboctet = "application/octet-stream"; #jab
+my $jabmsinstall = "application/x-msdownload"; #jab
+my $countnoimage;
+my $countimage;
+my $mime_type_searchstring = "image"; #jab
+my $jabresult; # jab
+my $jabvalue = -1; # jab
+
+#  *************  START HERE IF FILE IS NON-IMAGE i.e. pdf,txt,zip,octet stream,etc  ***********
+
+#jab old search...  if (($data[0] eq $jabtxt) or ($data[0] eq $jabpdf) or ($data[0] eq $jabzip) or ($data[0] eq $jabtar) or ($data[0] eq $jabxzip) or ($data[0] eq $jaboctet) or ($data[0] eq $jabmsinstall)) # jab format?
+
+        $jabresult = index ($data[0], $mime_type_searchstring);
+
+        if ($jabresult eq $jabvalue) #jab
+
+{
+
+        print p ("jabtest $jabresult $data[0]");
+
+	$countnoimage = $countnoimage + 1;
+        print p ("Document name: $data2[0]"),
+                        p ("MIME type: $data[0]");
+
+                        # encode the name with escape() for the URL, with escapeHTML() otherwise
+                        $serve_url = sprintf ("eDocsServe?name=%s", escape ($data5[0]));
+			$serve_url2 = sprintf ("eDocsServe?name=%s", escape ($data2[0]));
+                        $data2[0] = escapeHTML ($data2[0]);
+                        $data[0] = escapeHTML ($data[0]);
+                        print p ("Click on link to view:", a {-href => $serve_url2}, # link to doc
+                        # no document thumbnail (yet!) but it is clickable
+		        img ({-src => "$serve_url", -alt => $data2[0]})); #jab, "<br/>";
+
+        print header (-type => $data[0], -Content_Length => length ($data3[0])),
+                        $data[0];
+
+}
+
+#  *************  START HERE IF FILE IS IMAGE  ********************
+else
+{
+        $countimage = $countimage + 1;
+        print p ("Image name: $data2[0]"),
+                        p ("MIME type: $data[0]");
+		
+                        #jab p ("Thumbnail image:");
+                        # encode the name with escape() for the URL, with escapeHTML() otherwise
+			$serve_url = sprintf ("eDocsServe?name=%s", escape ($data2[0]));
+                	$data2[0] = escapeHTML ($data2[0]);
+			$data[0] = escapeHTML ($data[0]);
+
+                        print p ("Thumbnail image:", a {-href => $serve_url}, # link to doc
+                        # no document thumbnail (yet!) but it is clickable
+                        img ({-src => "$serve_url;$data3[0]=1", -alt => $data2[0]})); #jab, "<br/>";
+
+	                #jab print p ($data2[0]),
+                              #jab a ({-href => $serve_url},             # link for full size image
+                        # embed thumbnail as the link content to make it clickable
+			#jab img ({-src => "$serve_url;$data3[0]=1", -alt => $data2[0]})), "<br/>";
+
+	print header (-type => $data[0], -Content_Length => length ($data3[0])),
+                        $data[0];        
+
+}                
+
+print hr (), a ({-href => url ()}, "Click Here To Try Again (Do Not Use BROWSER BACK BUTTON)");
+print hr (), a ({-href => "https://jab.networthyconsulting.com/beta/eDocsManage"}, "Click Here for Home");
+
+	# jab $sth->finish();
+	# jab $dbh->disconnect(); 
+
+}
+#@ DISPLAY_LISTING

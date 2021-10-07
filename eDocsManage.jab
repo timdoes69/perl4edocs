@@ -1,0 +1,60 @@
+#! /usr/bin/perl -w
+# eDocsManage - Present general eDocuments Management home page  ****GoDaddy****
+
+use strict;
+use cPanelUserConfig;
+use lib qw(/home/jab118066250/perl/usr/lib/perl5 /home/jab118066250/perl);
+use CGI qw(:standard escape escapeHTML);
+#use WebDB;
+use WebDB::PseudEcomBeta;
+
+
+my $page = h1 ("Welcome to your eDocuments Management web site.")
+		. h2 ("You'll find options here to\n"
+			. "store (database) and/or veiw your eDocuments.")
+		. ul (
+                h2 ("Looking for a way to manage (store/database) your eDocuments?\n"
+                        . get_home_link ("Upload you eDocuments here (Link NOT Active)")
+                        . "."),
+		h2 ("Looking for a particular eDocuments?\n"
+			. get_eDocsSearch_link ("Search for your eDocuments here")
+			. "."),
+		h2 ("Download (View) ALL of your eDocuments\n"
+			. get_eDocsServe_link ("Here")
+			. "."),
+#		li ("Read our customer statisfaction\n"
+#			. get_satisfaction_link ("guarantee")
+#			. "."),
+#		li ("Have a comment or question?\n"
+#			. get_feedback_link ("Let us know")
+#			. "."),
+#		li ("How to\n"
+#			. get_contact_link ("contact us")
+#			. "."),
+#		li ("Concerned about the confidentiality of information you\n"
+#			. "submit to us? Read our\n"
+#			. get_privacy_link ("privacy policy")
+#			. "."),
+#		li ("Want to rate our site? Click\n"
+#			. get_rating_link ("here")
+#			. ".")
+		);
+
+my $page2;			
+
+$page = add_boilerplate ($page);	# add standard page elements
+
+$page2 = add_boilerplate2 ($page2);	# add standard page elements
+
+
+		
+print header (),
+		start_html (-title => "jab testing NetWorthy Consulting", -bgcolor => "lightgray"),
+
+	    $page,
+	
+		$page2,
+
+		end_html ();		
+
+exit (0);
